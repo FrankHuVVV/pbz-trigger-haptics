@@ -1,0 +1,4 @@
+LIBRARY AkMotion
+EXPORTS
+    g_pAKPluginList DATA
+    AkMotionInitializeScePadFunctions

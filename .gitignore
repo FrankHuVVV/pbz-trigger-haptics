@@ -1,0 +1,28 @@
+# build artefacts
+*.obj
+*.o
+*.exp
+*.lib
+*.pdb
+*.ilk
+
+# local output / logs
+log.txt
+mod_state.txt
+trigger.bin
+events.log
+router.log
+*.dmp
+
+# game files must never be committed
+AkMotion_orig.dll
+AkMotion.dll.bak
+*.ucas
+*.utoc
+*.pak
+PBZ.exe
+
+# editors
+.vs/
+.vscode/
+.idea/
