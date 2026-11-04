@@ -59,6 +59,11 @@
 **验证**：`UE4SS.log` 末尾出现 `PS scan successful` / `Build configuration: shipping` 等行，
 说明注入成功。若日志为空或游戏闪退，先解决 UE4SS 本身，别继续往下装。
 
+> **关于签名脚本**：`ue4ss\UE4SS_Signatures\GNatives.lua` 与 `GUObjectArray.lua`
+> 在本游戏的分发版里是**随 UE4SS 一起提供**的（内容针对具体 build 写死了 RVA / 镜像大小 / SHA-256）。
+> 本仓库提供的这两个文件是**版本无关**的重写版：自动推导模块基址，游戏更新后通常无需再改。
+> 用上游标准 UE4SS 3.x 时，把这两个文件放进去覆盖即可（机制是标准的 `UE4SS_Signatures`）。
+
 ## 2. 安装事件层（Lua）
 
 ```
@@ -67,6 +72,8 @@ mod\UE4SS_Signatures\*.lua →  <游戏>\platform\steam\ue4ss\UE4SS_Signatures\
 ```
 
 - `PBZHaptics\` 里必须有 `enabled.txt`（空文件也算）与 `Scripts\main.lua`；
+- **不要**在 `PBZHaptics\` 下建 `dlls\` 目录——UE4SS 会把它当成 C++ mod，
+  日志里出现 `Failed to load C++ mod PBZHaptics, dlls folder must contain…`（本仓库的 mod 纯 Lua，不需要 DLL）；
 - 两个签名脚本是**版本无关**版，解决游戏更新后 `AOB scans could not be completed` 的闪退。
 
 ## 3. 安装代理（DLL）
