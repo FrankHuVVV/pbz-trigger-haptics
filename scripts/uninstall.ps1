@@ -4,12 +4,16 @@
 
         .\UNINSTALL.ps1 -GameRoot "D:\...\PBZ"
 
-    目标：把游戏恢复到**安装前的样子**，包括原生震动。
+    安全前提：只还原"确实是我们改过的"文件。
+      * 若 AkMotion.dll 已被 Steam 修复/更新成游戏原版，则保留它，只删除我们留下的副本；
+      * 若特征码脚本已被更新替换，则不覆盖，仅清理备份。
+
+    顺序：
       1. 游戏必须已退出
       2. GameInput 四通道各写一帧 0（一次性解除卡住状态，无持久设置）
-      3. 还原原版 AkMotion.dll
+      3. 判断并还原 AkMotion.dll
       4. 删除 Lua 事件层（安装前就存在的同名目录则保留）
-      5. 特征码脚本：安装前存在的从 .pre-pbzhaptics.bak 还原；安装前不存在的删除
+      5. 特征码脚本按清单还原（仅当我们那份仍在位）
       6. 删除安装清单
 #>
 param(
@@ -33,6 +37,27 @@ if (Test-Path $manifestPath) {
     try { $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json } catch { $manifest = $null }
 }
 
+# ---------------------------------------------------------------- helpers
+function Test-IsOurProxy([string]$path) {
+    if (-not (Test-Path $path)) { return $false }
+    $len = (Get-Item $path).Length
+    if ($len -gt 120000) { return $false }          # 原版 186,856 字节；代理约 57 KB
+    try {
+        $bytes = [System.IO.File]::ReadAllBytes($path)
+        $text  = [System.Text.Encoding]::Latin1.GetString($bytes)
+        return ($text.Contains('AkMotion_orig.dll') -and $text.Contains('SetRumbleState'))
+    } catch { return $false }
+}
+
+function Test-IsOurSignature([string]$path) {
+    if (-not (Test-Path $path)) { return $false }
+    try {
+        $text = Get-Content $path -Raw -ErrorAction Stop
+        return $text.Contains('[PBZ auto]')
+    } catch { return $false }
+}
+
+# ---------------------------------------------------------------- 1. 清零
 $resetOk = $false
 try {
     if (-not ('PBZHapticsReset' -as [type])) {
@@ -144,16 +169,33 @@ public static class PBZHapticsReset
     Write-Warning "清零失败: $($_.Exception.Message)"
 }
 
+# ---------------------------------------------------------------- 2. AkMotion.dll
 $dll  = Join-Path $bin 'AkMotion.dll'
 $orig = Join-Path $bin 'AkMotion_orig.dll'
-if (Test-Path $orig) {
-    Remove-Item $dll -Force -ErrorAction SilentlyContinue
-    Rename-Item $orig 'AkMotion.dll' -Force
-    Write-Host "已还原原版 AkMotion.dll"
+
+if (Test-IsOurProxy $dll) {
+    # 我们还是当前生效的那份 -> 用备份还原
+    if (Test-Path $orig) {
+        Remove-Item $dll -Force
+        Rename-Item $orig 'AkMotion.dll' -Force
+        Write-Host "已还原原版 AkMotion.dll"
+    } else {
+        Write-Warning "当前是我们的代理，但找不到 AkMotion_orig.dll 备份；请用 Steam“验证完整性”恢复原版"
+    }
 } else {
-    Write-Warning "未找到 AkMotion_orig.dll；若目录下有 AkMotion.dll.bak，请手动改名为 AkMotion.dll"
+    # 已被 Steam 修复或更新成游戏自己的版本 -> 绝不覆盖
+    if (Test-Path $dll) {
+        Write-Host "AkMotion.dll 已是游戏原版（或更新版），保留不动"
+    } else {
+        Write-Warning "未找到 AkMotion.dll，请用 Steam“验证游戏文件完整性”补回"
+    }
+    if (Test-Path $orig) {
+        Remove-Item $orig -Force
+        Write-Host "已删除安装时留下的 AkMotion_orig.dll 副本（内容已由 Steam 提供）"
+    }
 }
 
+# ---------------------------------------------------------------- 3. Mod
 $modDst = Join-Path $ue 'Mods\PBZHaptics'
 $modPreexisted = $false
 if ($manifest -and $null -ne $manifest.modExisted) { $modPreexisted = [bool]$manifest.modExisted }
@@ -162,24 +204,32 @@ if (Test-Path $modDst) {
     else { Remove-Item $modDst -Recurse -Force; Write-Host "已移除 Lua 事件层" }
 }
 
+# ---------------------------------------------------------------- 4. 特征码
 $ours = @()
 if ($manifest -and $manifest.signatures) { $ours = @($manifest.signatures) }
-if ($ours.Count -eq 0) { $ours = @([pscustomobject]@{ name = 'GNatives.lua' }, [pscustomobject]@{ name = 'GUObjectArray.lua' }) }
+if ($ours.Count -eq 0) {
+    $ours = @([pscustomobject]@{ name = 'GNatives.lua' }, [pscustomobject]@{ name = 'GUObjectArray.lua' })
+}
 
 foreach ($item in $ours) {
-    $name = [string]$item.name
+    $name   = [string]$item.name
     $target = Join-Path $sigDst $name
     $backup = "$target.pre-pbzhaptics.bak"
 
     if (Test-Path $backup) {
-        Move-Item $backup $target -Force
-        Write-Host "已还原 $name（来自预装备份）"
+        if (Test-IsOurSignature $target) {
+            Move-Item $backup $target -Force
+            Write-Host "已还原 $name（来自预装备份）"
+        } else {
+            Remove-Item $backup -Force
+            Write-Host "$name 已被更新替换（非本工具版本），保留现状并清理备份"
+        }
         continue
     }
+
     if (-not (Test-Path $target)) { continue }
 
-    $content = Get-Content $target -Raw -ErrorAction SilentlyContinue
-    if ($content -and $content.Contains('[PBZ auto]')) {
+    if (Test-IsOurSignature $target) {
         Remove-Item $target -Force
         Write-Host "已删除本工具安装的 $name（安装前不存在）"
     } else {
@@ -187,10 +237,12 @@ foreach ($item in $ours) {
     }
 }
 
+# ---------------------------------------------------------------- 5. 清单
 if (Test-Path $manifestPath) { Remove-Item $manifestPath -Force; Write-Host "已删除安装清单" }
 
 Write-Host ""
-Write-Host "卸载完成：插件、Mod、特征码均恢复到安装前状态；原生震动由游戏自行驱动，未做任何持久修改。"
+Write-Host "卸载完成：只还原了本工具改过的文件；Steam 修复/更新过的一律保留。"
+Write-Host "原生震动由游戏自行驱动，未做任何持久修改。"
 if (-not $resetOk) {
     Write-Host "若手柄仍在空转：拔掉 USB 线 5 秒后重插，或长按 Xbox 键关机再开机。"
 }
