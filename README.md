@@ -64,7 +64,7 @@
 
 ## 第 0 步：安装 UE4SS（前置）
 
-1. 从 UE4SS 上游发布页下载 **3.0.1**（或兼容的 3.x）压缩包；
+1. 从我的另一个仓库(https://github.com/FrankHuVVV/PBZWallSense)中下载 **UE4SS-v3.0.1-bundle-v2.zip**；
 2. 解压到 `<游戏>\platform\steam\`，最终应存在：
 
    ```
