@@ -30,7 +30,7 @@
 ## "文件损坏"提示
 
 - 属于替换插件的正常代价，选**不修复 / 继续**即可。
-- 想彻底避免：每次玩前用 `scripts/install.ps1`，不玩时 `scripts/uninstall.ps1` 还原。
+- 想彻底避免：只在需要时手动替换 `AkMotion.dll`（保留 `AkMotion_orig.dll` 备份），不玩时按 README 的手动卸载步骤还原。
 
 ## 抓日志
 
